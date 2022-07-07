@@ -15,6 +15,7 @@ enum{
   TRIAL = 0, 
   FAR = 1}; //Set three states;
 
+static string noMask = "NO_MASK_INPUT";
 
 bool find(queue<int> que, int value){
   int size = que.size();
@@ -29,27 +30,26 @@ bool find(queue<int> que, int value){
 }
 
 
-Mat GWDT2D(string& imagePath, string& maskPath){
+Mat GWDT2D(Mat image){
   //Read the image in grayscale mode
-  Mat scrPicture = imread(imagePath, 0); 
-  int row = scrPicture.rows;
-  int col = scrPicture.cols;
+  int row = image.rows;
+  int col = image.cols;
   //imshow("Original Picture", Scr);
 
   Mat resPicture; 
-  resPicture.create(scrPicture.size(), CV_32FC1);
+  resPicture.create(image.size(), CV_32FC1);
 
   Mat  mat_mean, mat_stddev;
-  meanStdDev(scrPicture, mat_mean, mat_stddev);
+  meanStdDev(image, mat_mean, mat_stddev);
   //Get the image mean
   double mean = mat_mean.at<double>(0, 0); 
   int* state = (new int[col * row]);
 
   for (int i = 0; i < row; i++){
 	for (int j = 0; j < col; j++){
-	  if (scrPicture.at<uchar>(i, j) < (mean)){
+	  if (image.at<uchar>(i, j) < (mean)){
 		//The background point is ALIVE
-		resPicture.at<float>(i, j) = scrPicture.at<uchar>(i, j); 
+		resPicture.at<float>(i, j) = image.at<uchar>(i, j); 
 		state[i * col + j] = ALIVE;
 	  }
 	  else{
@@ -71,7 +71,7 @@ Mat GWDT2D(string& imagePath, string& maskPath){
 			//Find all the edge points and put them into the queue TrailQue;
 			if (state[(i + o) * col + j + p] == ALIVE){
 			  state[i * col + j] = TRIAL;
-			  resPicture.at<float>(i, j) = scrPicture.at<uchar>(i, j);
+			  resPicture.at<float>(i, j) = image.at<uchar>(i, j);
 			  TrailQue.push(i * col + j);
 			  break;
 			}
@@ -93,9 +93,10 @@ Mat GWDT2D(string& imagePath, string& maskPath){
 	for (int o = -1; o <= 1; o++){
 	  for (int p = -1; p <= 1; p++){
 		int N = (P_row + o) * col + P_col + p;
-
+		
+		
 		double len = sqrt(o * o + p * p);
-		float gs = resPicture.at<float>(P_row, P_col) + scrPicture.at<uchar>(P_row + o, P_col + p) * len;
+		float gs = resPicture.at<float>(P_row, P_col) + image.at<uchar>(P_row + o, P_col + p) * len;
 
 		//---Compare the existing GWDT value at this point with the value given by point P;
 		if (resPicture.at<float>(P_row + o, P_col + p) > gs){
@@ -132,35 +133,52 @@ Mat GWDT2D(string& imagePath, string& maskPath){
 
   //Compress the image pixel interval to 0-255
   Mat Dst;
-  Dst = scrPicture.clone();
+  Dst = image.clone();
   for (int i = 0; i < row; i++){
 	for (int j = 0; j < col; j++){
 	  Dst.at<uchar>(i, j) = 255 * resPicture.at<float>(i, j) / (Max + 1);
 	}
   }
 
-  imwrite("temp.tif", Dst);
-
+  //imwrite("temp.tif", Dst);
   //Normalized 
   resPicture = resPicture / (Max + 1);
-
-
-  cout << resPicture.at<float>(20, 206);
   imshow("GWDT", resPicture);
   waitKey(0);
 
   return resPicture;
 }
 
+//the main method
+vector<Mat> GWDTCommon(string& imagePath) {
+  //Read the image in grayscale mode
+  //Mat scrPicture = imread(imagePath, 0);
+  vector<Mat> scrPicture,res;
+  if (imreadmulti(imagePath, scrPicture, IMREAD_GRAYSCALE)) {
+	for (auto& slice : scrPicture) {
+	  Mat resSlice = GWDT2D(slice);
+	  res.push_back(resSlice);
+	  /*res.push_back(~resSlice);
+	  res.push_back(resSlice(Rect(0, 0, resSlice.cols / 2, resSlice.rows / 2)));*/
+	}
+	imwrite(imagePath + "_GWDT.tif", res);
+	for (auto& slice : res) {
+	  imshow("GWTD", slice);
+	}
+	return res;
+  }
+}
 
-void main()
-{
-  string picPath = "test.tif";
-  string maskPath = "none";
-  imshow("Original Picture", imread(picPath,0));
-  GWDT2D(picPath,maskPath);
-
-  system("pause");
+void main(int argc, char* argv[]){
+  vector<Mat> res;
+  string tmp = "test.tif";
+  GWDTCommon(tmp);
+  if (argc == 2) {
+	string picPath = argv[1];
+	GWDTCommon(picPath);
+	//imshow("result",res);
+	//imwrite("res.tif", res);
+  }
   return;
 }
 
